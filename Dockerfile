@@ -1,14 +1,11 @@
-FROM python:3.13-slim
+FROM python:3.12-slim
 
 WORKDIR /app
 
-# Cài đặt dependencies hệ thống cần thiết cho psycopg2 và build tools
+# Cài đặt dependencies hệ thống
 RUN apt-get update && apt-get install -y \
     libpq-dev \
     gcc \
-    g++ \
-    make \
-    python3-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements và cài Python packages
