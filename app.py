@@ -362,35 +362,29 @@ def report_detail():
 @app.route('/backup/full')
 @login_required
 def backup_full():
-    """Backup đầy đủ: sản phẩm, khách hàng, đơn hàng, chi tiết đơn hàng"""
+    """Backup đầy đủ dữ liệu"""
     import sqlite3
     from datetime import datetime
     
     conn = sqlite3.connect('data/pos.db')
     conn.row_factory = sqlite3.Row
-    cursor = conn.cursor()
     
-    # Nội dung backup
-    content = f"""-- ============================================
--- BACKUP CỬA HÀNG MINH THIÊN PHÚC
--- Thời gian: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
--- ============================================
-
-PRAGMA foreign_keys=OFF;
-BEGIN TRANSACTION;
-
-"""
+    # Bắt đầu nội dung backup
+    lines = []
+    lines.append("-- ============================================")
+    lines.append(f"-- BACKUP CỬA HÀNG MINH THIÊN PHÚC")
+    lines.append(f"-- Thời gian: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    lines.append("-- ============================================")
+    lines.append("")
+    lines.append("PRAGMA foreign_keys=OFF;")
+    lines.append("BEGIN TRANSACTION;")
+    lines.append("")
     
-    # 1. Bảng sản phẩm
-    content += "-- ============================================\n"
-    content += "-- 1. DANH SÁCH SẢN PHẨM\n"
-    content += "-- ============================================\n\n"
-    
-    cursor.execute("SELECT * FROM products ORDER BY id")
-    products = cursor.fetchall()
-    
-    content += "DROP TABLE IF EXISTS products;\n"
-    content += """CREATE TABLE products (
+    # 1. Bảng products
+    lines.append("-- ========== PRODUCTS ==========")
+    lines.append("DROP TABLE IF EXISTS products;")
+    lines.append("""
+CREATE TABLE products (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
     price INTEGER NOT NULL,
@@ -398,21 +392,25 @@ BEGIN TRANSACTION;
     stock INTEGER DEFAULT 0,
     category TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);\n\n"""
+);
+""")
+    
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM products ORDER BY id")
+    products = cursor.fetchall()
     
     for p in products:
-        content += f"INSERT INTO products VALUES ({p['id']}, '{p['name'].replace("'", "''")}', {p['price']}, {p['cost_price']}, {p['stock']}, '{p['category'] or ''}', '{p['created_at']}');\n"
+        name = p['name'].replace("'", "''")
+        category = p['category'] if p['category'] else ''
+        lines.append(f"INSERT INTO products VALUES ({p['id']}, '{name}', {p['price']}, {p['cost_price']}, {p['stock']}, '{category}', '{p['created_at']}');")
     
-    # 2. Bảng khách hàng
-    content += f"\n\n-- ============================================\n"
-    content += f"-- 2. DANH SÁCH KHÁCH HÀNG ({cursor.execute('SELECT COUNT(*) FROM customers').fetchone()[0]} khách hàng)\n"
-    content += f"-- ============================================\n\n"
+    lines.append("")
     
-    cursor.execute("SELECT * FROM customers ORDER BY id")
-    customers = cursor.fetchall()
-    
-    content += "DROP TABLE IF EXISTS customers;\n"
-    content += """CREATE TABLE customers (
+    # 2. Bảng customers
+    lines.append("-- ========== CUSTOMERS ==========")
+    lines.append("DROP TABLE IF EXISTS customers;")
+    lines.append("""
+CREATE TABLE customers (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
     phone TEXT,
@@ -421,21 +419,27 @@ BEGIN TRANSACTION;
     total_spent INTEGER DEFAULT 0,
     last_purchase TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);\n\n"""
+);
+""")
+    
+    cursor.execute("SELECT * FROM customers ORDER BY id")
+    customers = cursor.fetchall()
     
     for c in customers:
-        content += f"INSERT INTO customers VALUES ({c['id']}, '{c['name'].replace("'", "''")}', '{c['phone'] or ''}', '{c['email'] or ''}', '{c['address'] or ''}', {c['total_spent']}, '{c['last_purchase'] or ''}', '{c['created_at']}');\n"
+        name = c['name'].replace("'", "''")
+        phone = c['phone'] if c['phone'] else ''
+        email = c['email'] if c['email'] else ''
+        address = c['address'] if c['address'] else ''
+        last_purchase = c['last_purchase'] if c['last_purchase'] else ''
+        lines.append(f"INSERT INTO customers VALUES ({c['id']}, '{name}', '{phone}', '{email}', '{address}', {c['total_spent']}, '{last_purchase}', '{c['created_at']}');")
     
-    # 3. Bảng đơn hàng
-    content += f"\n\n-- ============================================\n"
-    content += f"-- 3. DANH SÁCH ĐƠN HÀNG ({cursor.execute('SELECT COUNT(*) FROM orders').fetchone()[0]} đơn hàng)\n"
-    content += f"-- ============================================\n\n"
+    lines.append("")
     
-    cursor.execute("SELECT * FROM orders ORDER BY id")
-    orders = cursor.fetchall()
-    
-    content += "DROP TABLE IF EXISTS orders;\n"
-    content += """CREATE TABLE orders (
+    # 3. Bảng orders
+    lines.append("-- ========== ORDERS ==========")
+    lines.append("DROP TABLE IF EXISTS orders;")
+    lines.append("""
+CREATE TABLE orders (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     order_number TEXT UNIQUE NOT NULL,
     customer_id INTEGER,
@@ -445,22 +449,23 @@ BEGIN TRANSACTION;
     created_by INTEGER,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (customer_id) REFERENCES customers(id)
-);\n\n"""
+);
+""")
+    
+    cursor.execute("SELECT * FROM orders ORDER BY id")
+    orders = cursor.fetchall()
     
     for o in orders:
-        customer_id = o['customer_id'] if o['customer_id'] else 'NULL'
-        content += f"INSERT INTO orders VALUES ({o['id']}, '{o['order_number']}', {customer_id}, {o['total_amount']}, '{o['payment_method']}', '{o['status']}', {o['created_by'] or 1}, '{o['created_at']}');\n"
+        customer_id = str(o['customer_id']) if o['customer_id'] else 'NULL'
+        lines.append(f"INSERT INTO orders VALUES ({o['id']}, '{o['order_number']}', {customer_id}, {o['total_amount']}, '{o['payment_method']}', '{o['status']}', {o['created_by'] or 1}, '{o['created_at']}');")
     
-    # 4. Bảng chi tiết đơn hàng
-    content += f"\n\n-- ============================================\n"
-    content += f"-- 4. CHI TIẾT ĐƠN HÀNG ({cursor.execute('SELECT COUNT(*) FROM order_items').fetchone()[0]} dòng)\n"
-    content += f"-- ============================================\n\n"
+    lines.append("")
     
-    cursor.execute("SELECT * FROM order_items ORDER BY id")
-    items = cursor.fetchall()
-    
-    content += "DROP TABLE IF EXISTS order_items;\n"
-    content += """CREATE TABLE order_items (
+    # 4. Bảng order_items
+    lines.append("-- ========== ORDER ITEMS ==========")
+    lines.append("DROP TABLE IF EXISTS order_items;")
+    lines.append("""
+CREATE TABLE order_items (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     order_id INTEGER NOT NULL,
     product_id INTEGER NOT NULL,
@@ -468,68 +473,44 @@ BEGIN TRANSACTION;
     price INTEGER NOT NULL,
     FOREIGN KEY (order_id) REFERENCES orders(id),
     FOREIGN KEY (product_id) REFERENCES products(id)
-);\n\n"""
+);
+""")
+    
+    cursor.execute("SELECT * FROM order_items ORDER BY id")
+    items = cursor.fetchall()
     
     for item in items:
-        content += f"INSERT INTO order_items VALUES ({item['id']}, {item['order_id']}, {item['product_id']}, {item['quantity']}, {item['price']});\n"
+        lines.append(f"INSERT INTO order_items VALUES ({item['id']}, {item['order_id']}, {item['product_id']}, {item['quantity']}, {item['price']});")
     
-    # 5. Thống kê tổng hợp
-    content += f"\n\n-- ============================================\n"
-    content += f"-- 5. THỐNG KÊ TỔNG HỢP\n"
-    content += f"-- ============================================\n\n"
+    lines.append("")
     
-    # Thống kê doanh thu
-    cursor.execute("SELECT SUM(total_amount) as total FROM orders WHERE status='completed'")
-    total_revenue = cursor.fetchone()['total'] or 0
-    
-    cursor.execute("SELECT COUNT(*) as count FROM customers")
-    total_customers = cursor.fetchone()['count']
+    # 5. Thống kê
+    lines.append("-- ========== STATISTICS ==========")
     
     cursor.execute("SELECT COUNT(*) as count FROM products")
     total_products = cursor.fetchone()['count']
     
-    content += f"""
--- 📊 THỐNG KÊ:
--- Tổng sản phẩm: {total_products}
--- Tổng khách hàng: {total_customers}
--- Tổng doanh thu: {total_revenue:,.0f} VNĐ
--- Tổng đơn hàng: {len(orders)}
-"""
+    cursor.execute("SELECT COUNT(*) as count FROM customers")
+    total_customers = cursor.fetchone()['count']
     
-    # Thống kê theo tháng
-    content += f"\n-- 📅 DOANH THU THEO THÁNG:\n"
-    cursor.execute("""
-        SELECT strftime('%Y-%m', created_at) as month, 
-               COUNT(*) as orders, 
-               SUM(total_amount) as revenue
-        FROM orders 
-        WHERE status='completed'
-        GROUP BY month
-        ORDER BY month DESC
-    """)
-    monthly = cursor.fetchall()
-    for m in monthly:
-        content += f"-- {m['month']}: {m['orders']} đơn - {m['revenue']:,.0f} VNĐ\n"
+    cursor.execute("SELECT COUNT(*) as count FROM orders")
+    total_orders = cursor.fetchone()['count']
     
-    # Top sản phẩm bán chạy
-    content += f"\n-- 🏆 TOP SẢN PHẨM BÁN CHẠY:\n"
-    cursor.execute("""
-        SELECT p.name, SUM(oi.quantity) as sold
-        FROM order_items oi
-        JOIN products p ON oi.product_id = p.id
-        GROUP BY p.id
-        ORDER BY sold DESC
-        LIMIT 5
-    """)
-    top_products = cursor.fetchall()
-    for tp in top_products:
-        content += f"-- {tp['name']}: {tp['sold']} sản phẩm\n"
+    cursor.execute("SELECT SUM(total_amount) as total FROM orders WHERE status='completed'")
+    total_revenue = cursor.fetchone()['total'] or 0
     
-    content += "\nCOMMIT;\n"
+    lines.append(f"-- Tổng sản phẩm: {total_products}")
+    lines.append(f"-- Tổng khách hàng: {total_customers}")
+    lines.append(f"-- Tổng đơn hàng: {total_orders}")
+    lines.append(f"-- Tổng doanh thu: {total_revenue:,.0f} VNĐ")
+    
+    lines.append("")
+    lines.append("COMMIT;")
     
     conn.close()
     
     # Tạo file backup
+    content = "\n".join(lines)
     filename = f"backup_full_{datetime.now().strftime('%Y%m%d_%H%M%S')}.sql"
     
     return content, 200, {
