@@ -237,32 +237,43 @@ def report_detail():
         report_type = request.args.get('type', 'day')
         date_param = request.args.get('date')
         
+        print(f"DEBUG: report_type={report_type}, date_param={date_param}")
+        
         if report_type == 'day':
             if date_param:
                 target_date = date_param
             else:
-                target_date = datetime.now().date().isoformat()
+                target_date = datetime.now().strftime('%Y-%m-%d')
             
-            # Lấy dữ liệu theo giờ
-            result = db.client.table('orders')\
-                .select('created_at, total_amount')\
-                .eq('status', 'completed')\
-                .gte('created_at', target_date)\
-                .lt('created_at', f"{target_date}T23:59:59")\
-                .execute()
-            
-            hours_data = {}
-            for order in result.data:
-                hour = int(order['created_at'][11:13])
-                hours_data[hour] = hours_data.get(hour, 0) + order['total_amount']
-            
+            # Khởi tạo mảng 24 giờ với giá trị 0
             reports = []
             for h in range(24):
                 reports.append({
                     'hour': f"{h:02d}",
-                    'order_count': 1 if h in hours_data else 0,
-                    'revenue': hours_data.get(h, 0)
+                    'order_count': 0,
+                    'revenue': 0
                 })
+            
+            # Lấy dữ liệu từ database
+            cursor = db.conn.cursor()
+            cursor.execute("""
+                SELECT 
+                    strftime('%H', created_at) as hour,
+                    COUNT(*) as order_count,
+                    SUM(total_amount) as revenue
+                FROM orders 
+                WHERE status = 'completed' 
+                    AND DATE(created_at) = ?
+                GROUP BY strftime('%H', created_at)
+            """, (target_date,))
+            
+            rows = cursor.fetchall()
+            print(f"DEBUG: Found {len(rows)} rows for day {target_date}")
+            
+            for row in rows:
+                hour_int = int(row['hour'])
+                reports[hour_int]['order_count'] = row['order_count']
+                reports[hour_int]['revenue'] = row['revenue'] or 0
             
             return jsonify(reports)
         
@@ -272,30 +283,42 @@ def report_detail():
             else:
                 target_date = datetime.now().strftime('%Y-%m')
             
-            result = db.client.table('orders')\
-                .select('created_at, total_amount')\
-                .eq('status', 'completed')\
-                .gte('created_at', f"{target_date}-01")\
-                .lt('created_at', f"{target_date}-32")\
-                .execute()
-            
-            days_data = {}
-            for order in result.data:
-                day = int(order['created_at'][8:10])
-                days_data[day] = days_data.get(day, 0) + order['total_amount']
-            
+            # Lấy số ngày trong tháng
             year = int(target_date[:4])
             month = int(target_date[5:7])
             from calendar import monthrange
             days_in_month = monthrange(year, month)[1]
             
+            # Khởi tạo mảng các ngày trong tháng
             reports = []
             for d in range(1, days_in_month + 1):
+                day_str = f"{year}-{month:02d}-{d:02d}"
                 reports.append({
-                    'day': f"{year}-{month:02d}-{d:02d}",
-                    'order_count': 1 if d in days_data else 0,
-                    'revenue': days_data.get(d, 0)
+                    'day': day_str,
+                    'order_count': 0,
+                    'revenue': 0
                 })
+            
+            # Lấy dữ liệu từ database
+            cursor = db.conn.cursor()
+            cursor.execute("""
+                SELECT 
+                    strftime('%d', created_at) as day,
+                    COUNT(*) as order_count,
+                    SUM(total_amount) as revenue
+                FROM orders 
+                WHERE status = 'completed' 
+                    AND strftime('%Y-%m', created_at) = ?
+                GROUP BY strftime('%d', created_at)
+            """, (target_date,))
+            
+            rows = cursor.fetchall()
+            print(f"DEBUG: Found {len(rows)} rows for month {target_date}")
+            
+            for row in rows:
+                day_int = int(row['day'])
+                reports[day_int - 1]['order_count'] = row['order_count']
+                reports[day_int - 1]['revenue'] = row['revenue'] or 0
             
             return jsonify(reports)
         
@@ -305,32 +328,45 @@ def report_detail():
             else:
                 year = datetime.now().year
             
-            result = db.client.table('orders')\
-                .select('created_at, total_amount')\
-                .eq('status', 'completed')\
-                .gte('created_at', f"{year}-01-01")\
-                .lt('created_at', f"{year + 1}-01-01")\
-                .execute()
-            
-            months_data = {}
-            for order in result.data:
-                month = int(order['created_at'][5:7])
-                months_data[month] = months_data.get(month, 0) + order['total_amount']
-            
+            # Khởi tạo mảng 12 tháng
             reports = []
             for m in range(1, 13):
                 reports.append({
                     'month': f"{year}-{m:02d}",
-                    'order_count': 1 if m in months_data else 0,
-                    'revenue': months_data.get(m, 0)
+                    'order_count': 0,
+                    'revenue': 0
                 })
+            
+            # Lấy dữ liệu từ database
+            cursor = db.conn.cursor()
+            cursor.execute("""
+                SELECT 
+                    strftime('%m', created_at) as month,
+                    COUNT(*) as order_count,
+                    SUM(total_amount) as revenue
+                FROM orders 
+                WHERE status = 'completed' 
+                    AND strftime('%Y', created_at) = ?
+                GROUP BY strftime('%m', created_at)
+            """, (str(year),))
+            
+            rows = cursor.fetchall()
+            print(f"DEBUG: Found {len(rows)} rows for year {year}")
+            
+            for row in rows:
+                month_int = int(row['month'])
+                reports[month_int - 1]['order_count'] = row['order_count']
+                reports[month_int - 1]['revenue'] = row['revenue'] or 0
             
             return jsonify(reports)
         
         return jsonify([])
+        
     except Exception as e:
-        print(f"Lỗi report_detail: {e}")
-        return jsonify([])
+        print(f"ERROR in report_detail: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
 
 # ==================== CHẠY APP ====================
 if __name__ == '__main__':
