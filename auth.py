@@ -1,7 +1,6 @@
 from functools import wraps
-from flask import session, redirect, url_for, request
+from flask import session, redirect, url_for
 
-# Thông tin đăng nhập
 ADMIN_USERNAME = "hoangvinh"
 ADMIN_PASSWORD = "Vohoangvinh0807"
 
