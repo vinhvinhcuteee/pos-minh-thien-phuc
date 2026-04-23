@@ -44,7 +44,8 @@ def products_page():
 @app.route('/api/products', methods=['GET'])
 @login_required
 def get_products():
-    products = db.fetch_all("SELECT * FROM products ORDER BY id DESC")
+    products = db.fetch_all('products')
+    products = sorted(products, key=lambda x: x['id'], reverse=True)
     return jsonify(products)
 
 @app.route('/api/products', methods=['POST'])
