@@ -368,6 +368,26 @@ def report_detail():
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
+@app.route('/admin/backup')
+@login_required
+def backup_database():
+    """Tải backup database - Truy cập đường dẫn này để tải file backup"""
+    import subprocess
+    from datetime import datetime
+    
+    # Chạy lệnh export database
+    result = subprocess.run(['sqlite3', 'data/pos.db', '.dump'], 
+                          capture_output=True, text=True)
+    
+    # Tạo tên file có timestamp
+    filename = f"backup_pos_{datetime.now().strftime('%Y%m%d_%H%M%S')}.sql"
+    
+    # Trả về file để tải xuống
+    return result.stdout, 200, {
+        'Content-Type': 'text/plain',
+        'Content-Disposition': f'attachment; filename={filename}'
+    }
+
 # ==================== CHẠY APP ====================
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
