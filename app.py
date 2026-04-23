@@ -60,12 +60,8 @@ def invoices_page():
 @app.route('/api/products', methods=['GET'])
 @login_required
 def get_products():
-    try:
-        result = db.client.table('products').select('*').order('id', desc=True).execute()
-        return jsonify(result.data)
-    except Exception as e:
-        print(f"Lỗi: {e}")
-        return jsonify([])
+    products = db.get_all_products()
+    return jsonify(products)
 
 @app.route('/api/products', methods=['POST'])
 @login_required
@@ -79,10 +75,12 @@ def add_product():
             'stock': int(data.get('stock', 0)),
             'category': data.get('category', '')
         }
-        result = db.client.table('products').insert(product_data).execute()
-        return jsonify({'success': True, 'id': result.data[0]['id'] if result.data else None})
+        product_id = db.add_product(product_data)
+        if product_id:
+            return jsonify({'success': True, 'id': product_id})
+        else:
+            return jsonify({'success': False, 'error': 'Không thể thêm sản phẩm'}), 500
     except Exception as e:
-        print(f"Lỗi: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/products/<int:product_id>', methods=['PUT'])
@@ -97,29 +95,23 @@ def update_product(product_id):
             'stock': int(data.get('stock', 0)),
             'category': data.get('category', '')
         }
-        db.client.table('products').update(product_data).eq('id', product_id).execute()
-        return jsonify({'success': True})
+        success = db.update_product(product_id, product_data)
+        return jsonify({'success': success})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/products/<int:product_id>', methods=['DELETE'])
 @login_required
 def delete_product(product_id):
-    try:
-        db.client.table('products').delete().eq('id', product_id).execute()
-        return jsonify({'success': True})
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+    success = db.delete_product(product_id)
+    return jsonify({'success': success})
 
 # ==================== API KHÁCH HÀNG ====================
 @app.route('/api/customers', methods=['GET'])
 @login_required
 def get_customers():
-    try:
-        result = db.client.table('customers').select('*').order('total_spent', desc=True).execute()
-        return jsonify(result.data)
-    except Exception as e:
-        return jsonify([])
+    customers = db.get_all_customers()
+    return jsonify(customers)
 
 @app.route('/api/customers', methods=['POST'])
 @login_required
@@ -133,8 +125,11 @@ def add_customer():
             'address': data.get('address', ''),
             'total_spent': 0
         }
-        result = db.client.table('customers').insert(customer_data).execute()
-        return jsonify({'success': True, 'id': result.data[0]['id'] if result.data else None})
+        customer_id = db.add_customer(customer_data)
+        if customer_id:
+            return jsonify({'success': True, 'id': customer_id})
+        else:
+            return jsonify({'success': False, 'error': 'Không thể thêm khách hàng'}), 500
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
@@ -149,76 +144,32 @@ def update_customer(customer_id):
             'email': data.get('email', ''),
             'address': data.get('address', '')
         }
-        db.client.table('customers').update(customer_data).eq('id', customer_id).execute()
-        return jsonify({'success': True})
+        success = db.update_customer(customer_id, customer_data)
+        return jsonify({'success': success})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/customers/<int:customer_id>', methods=['DELETE'])
 @login_required
 def delete_customer(customer_id):
-    try:
-        # Kiểm tra xem khách hàng có đơn hàng không
-        orders = db.client.table('orders').select('id', count='exact').eq('customer_id', customer_id).execute()
-        if orders.count and orders.count > 0:
-            return jsonify({'success': False, 'error': 'Khách hàng có đơn hàng, không thể xóa'}), 400
-        db.client.table('customers').delete().eq('id', customer_id).execute()
+    success, error = db.delete_customer(customer_id)
+    if success:
         return jsonify({'success': True})
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+    else:
+        return jsonify({'success': False, 'error': error}), 400
 
 @app.route('/api/customers/<int:customer_id>/history')
 @login_required
 def get_customer_history(customer_id):
-    try:
-        result = db.client.table('orders')\
-            .select('*, order_items(*, products(name))')\
-            .eq('customer_id', customer_id)\
-            .order('created_at', desc=True)\
-            .execute()
-        
-        history = []
-        for order in result.data:
-            for item in order.get('order_items', []):
-                history.append({
-                    'order_id': order['id'],
-                    'order_number': order['order_number'],
-                    'total_amount': order['total_amount'],
-                    'created_at': order['created_at'],
-                    'payment_method': order['payment_method'],
-                    'product_name': item.get('products', {}).get('name', ''),
-                    'quantity': item['quantity'],
-                    'price': item['price']
-                })
-        return jsonify(history)
-    except Exception as e:
-        return jsonify([])
+    history = db.get_customer_history(customer_id)
+    return jsonify(history)
 
 # ==================== API ĐƠN HÀNG ====================
 @app.route('/api/orders', methods=['GET'])
 @login_required
 def get_orders():
-    try:
-        result = db.client.table('orders')\
-            .select('*, customers(name)')\
-            .order('created_at', desc=True)\
-            .limit(50)\
-            .execute()
-        
-        orders = []
-        for order in result.data:
-            orders.append({
-                'id': order['id'],
-                'order_number': order['order_number'],
-                'customer_name': order.get('customers', {}).get('name', 'Khách lẻ'),
-                'total_amount': order['total_amount'],
-                'payment_method': order['payment_method'],
-                'status': order['status'],
-                'created_at': order['created_at']
-            })
-        return jsonify(orders)
-    except Exception as e:
-        return jsonify([])
+    orders = db.get_all_orders()
+    return jsonify(orders)
 
 @app.route('/api/orders', methods=['POST'])
 @login_required
@@ -227,7 +178,6 @@ def create_order():
         data = request.json
         order_number = f"DH{datetime.now().strftime('%Y%m%d%H%M%S')}"
         
-        # Tạo đơn hàng
         order_data = {
             'order_number': order_number,
             'customer_id': data.get('customer_id'),
@@ -236,40 +186,13 @@ def create_order():
             'status': 'completed',
             'created_by': 1
         }
-        result = db.client.table('orders').insert(order_data).execute()
         
-        if not result.data:
-            return jsonify({'success': False, 'error': 'Không thể tạo đơn hàng'}), 500
+        order_id, error = db.create_order(order_data, data['items'])
         
-        order_id = result.data[0]['id']
-        
-        # Thêm chi tiết đơn hàng và cập nhật tồn kho
-        for item in data['items']:
-            # Thêm order item
-            db.client.table('order_items').insert({
-                'order_id': order_id,
-                'product_id': item['id'],
-                'quantity': item['quantity'],
-                'price': item['price']
-            }).execute()
-            
-            # Giảm tồn kho
-            product = db.client.table('products').select('stock').eq('id', item['id']).execute()
-            if product.data:
-                new_stock = product.data[0]['stock'] - item['quantity']
-                db.client.table('products').update({'stock': new_stock}).eq('id', item['id']).execute()
-        
-        # Cập nhật tổng chi tiêu khách hàng
-        if data.get('customer_id'):
-            customer = db.client.table('customers').select('total_spent').eq('id', data['customer_id']).execute()
-            if customer.data:
-                new_total = customer.data[0]['total_spent'] + data['total_amount']
-                db.client.table('customers').update({
-                    'total_spent': new_total,
-                    'last_purchase': datetime.now().isoformat()
-                }).eq('id', data['customer_id']).execute()
-        
-        return jsonify({'success': True, 'order_id': order_id, 'order_number': order_number})
+        if order_id:
+            return jsonify({'success': True, 'order_id': order_id, 'order_number': order_number})
+        else:
+            return jsonify({'success': False, 'error': error}), 500
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
@@ -277,84 +200,122 @@ def create_order():
 @app.route('/api/invoices', methods=['GET'])
 @login_required
 def get_invoices():
-    try:
-        filter_type = request.args.get('filter', 'all')
-        start_date = request.args.get('start_date')
-        end_date = request.args.get('end_date')
-        
-        query = db.client.table('orders')\
-            .select('*, order_items(*, products(name))')\
-            .eq('status', 'completed')\
-            .order('created_at', desc=True)
-        
-        if filter_type == 'today':
-            today = datetime.now().date().isoformat()
-            query = query.gte('created_at', today)
-        elif filter_type == 'week':
-            week_ago = (datetime.now() - timedelta(days=7)).date().isoformat()
-            query = query.gte('created_at', week_ago)
-        elif filter_type == 'month':
-            month_ago = (datetime.now() - timedelta(days=30)).date().isoformat()
-            query = query.gte('created_at', month_ago)
-        
-        if start_date:
-            query = query.gte('created_at', start_date)
-        if end_date:
-            query = query.lte('created_at', end_date)
-        
-        result = query.execute()
-        
-        invoices = []
-        for order in result.data:
-            for item in order.get('order_items', []):
-                invoices.append({
-                    'order_number': order['order_number'],
-                    'created_at': order['created_at'],
-                    'product_name': item.get('products', {}).get('name', ''),
-                    'quantity': item['quantity'],
-                    'price': item['price'],
-                    'subtotal': item['quantity'] * item['price'],
-                    'total_amount': order['total_amount']
-                })
-        return jsonify(invoices)
-    except Exception as e:
-        return jsonify([])
+    filter_type = request.args.get('filter', 'all')
+    start_date = request.args.get('start_date')
+    end_date = request.args.get('end_date')
+    
+    invoices = db.get_invoices(filter_type, start_date, end_date)
+    return jsonify(invoices)
 
 # ==================== API THỐNG KÊ ====================
 @app.route('/api/stats', methods=['GET'])
 @login_required
 def get_stats():
+    stats = db.get_stats()
+    return jsonify(stats)
+
+@app.route('/api/reports/detail', methods=['GET'])
+@login_required
+def report_detail():
+    """Báo cáo chi tiết doanh thu theo ngày/tháng/năm"""
     try:
-        # Tổng số
-        products_count = db.client.table('products').select('id', count='exact').execute().count or 0
-        customers_count = db.client.table('customers').select('id', count='exact').execute().count or 0
-        orders_count = db.client.table('orders').select('id', count='exact').eq('status', 'completed').execute().count or 0
+        report_type = request.args.get('type', 'day')
+        date_param = request.args.get('date')
         
-        # Doanh thu hôm nay
-        today = datetime.now().date().isoformat()
-        today_orders = db.client.table('orders').select('total_amount').eq('status', 'completed').gte('created_at', today).execute()
-        today_revenue = sum(o['total_amount'] for o in today_orders.data)
+        if report_type == 'day':
+            if date_param:
+                target_date = date_param
+            else:
+                target_date = datetime.now().date().isoformat()
+            
+            # Lấy dữ liệu theo giờ
+            result = db.client.table('orders')\
+                .select('created_at, total_amount')\
+                .eq('status', 'completed')\
+                .gte('created_at', target_date)\
+                .lt('created_at', f"{target_date}T23:59:59")\
+                .execute()
+            
+            hours_data = {}
+            for order in result.data:
+                hour = int(order['created_at'][11:13])
+                hours_data[hour] = hours_data.get(hour, 0) + order['total_amount']
+            
+            reports = []
+            for h in range(24):
+                reports.append({
+                    'hour': f"{h:02d}",
+                    'order_count': 1 if h in hours_data else 0,
+                    'revenue': hours_data.get(h, 0)
+                })
+            
+            return jsonify(reports)
         
-        # Doanh thu tháng này
-        first_day = datetime.now().replace(day=1).date().isoformat()
-        month_orders = db.client.table('orders').select('total_amount').eq('status', 'completed').gte('created_at', first_day).execute()
-        month_revenue = sum(o['total_amount'] for o in month_orders.data)
+        elif report_type == 'month':
+            if date_param:
+                target_date = date_param
+            else:
+                target_date = datetime.now().strftime('%Y-%m')
+            
+            result = db.client.table('orders')\
+                .select('created_at, total_amount')\
+                .eq('status', 'completed')\
+                .gte('created_at', f"{target_date}-01")\
+                .lt('created_at', f"{target_date}-32")\
+                .execute()
+            
+            days_data = {}
+            for order in result.data:
+                day = int(order['created_at'][8:10])
+                days_data[day] = days_data.get(day, 0) + order['total_amount']
+            
+            year = int(target_date[:4])
+            month = int(target_date[5:7])
+            from calendar import monthrange
+            days_in_month = monthrange(year, month)[1]
+            
+            reports = []
+            for d in range(1, days_in_month + 1):
+                reports.append({
+                    'day': f"{year}-{month:02d}-{d:02d}",
+                    'order_count': 1 if d in days_data else 0,
+                    'revenue': days_data.get(d, 0)
+                })
+            
+            return jsonify(reports)
         
-        return jsonify({
-            'total_products': products_count,
-            'total_customers': customers_count,
-            'total_orders': orders_count,
-            'today_revenue': today_revenue,
-            'month_revenue': month_revenue,
-            'profit': month_revenue * 0.3,
-            'profit_margin': 30,
-            'top_products': []
-        })
+        elif report_type == 'year':
+            if date_param:
+                year = int(date_param.split('-')[0])
+            else:
+                year = datetime.now().year
+            
+            result = db.client.table('orders')\
+                .select('created_at, total_amount')\
+                .eq('status', 'completed')\
+                .gte('created_at', f"{year}-01-01")\
+                .lt('created_at', f"{year + 1}-01-01")\
+                .execute()
+            
+            months_data = {}
+            for order in result.data:
+                month = int(order['created_at'][5:7])
+                months_data[month] = months_data.get(month, 0) + order['total_amount']
+            
+            reports = []
+            for m in range(1, 13):
+                reports.append({
+                    'month': f"{year}-{m:02d}",
+                    'order_count': 1 if m in months_data else 0,
+                    'revenue': months_data.get(m, 0)
+                })
+            
+            return jsonify(reports)
+        
+        return jsonify([])
     except Exception as e:
-        return jsonify({
-            'total_products': 0, 'total_customers': 0, 'total_orders': 0,
-            'today_revenue': 0, 'month_revenue': 0, 'profit': 0, 'profit_margin': 0, 'top_products': []
-        })
+        print(f"Lỗi report_detail: {e}")
+        return jsonify([])
 
 # ==================== CHẠY APP ====================
 if __name__ == '__main__':
