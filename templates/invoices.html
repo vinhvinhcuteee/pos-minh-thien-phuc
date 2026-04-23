@@ -185,6 +185,88 @@
             </table>
         </div>
     </div>
+<!-- Tìm phần <th> trong thead và thêm cột THAO TÁC -->
+<thead>
+    <tr>
+        <th>MÃ ĐƠN</th>
+        <th>SẢN PHẨM</th>
+        <th>NGÀY MUA</th>
+        <th>SỐ LƯỢNG</th>
+        <th>ĐƠN GIÁ</th>
+        <th>THÀNH TIỀN</th>
+        <th>THAO TÁC</th>
+    </tr>
+</thead>
+
+<!-- Sửa lại phần hiển thị dữ liệu trong JavaScript -->
+<script>
+    async function loadInvoices() {
+        const filterType = document.getElementById('filterType').value;
+        const startDate = document.getElementById('startDate').value;
+        const endDate = document.getElementById('endDate').value;
+        
+        let url = `/api/invoices?filter=${filterType}`;
+        if (startDate) url += `&start_date=${startDate}`;
+        if (endDate) url += `&end_date=${endDate}`;
+        
+        const res = await fetch(url);
+        const invoices = await res.json();
+        const tbody = document.getElementById('invoiceList');
+        const totalSpan = document.getElementById('totalAmount');
+        
+        if (invoices.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" class="empty-state">Không có hóa đơn nào</td></tr>';
+            totalSpan.innerText = '0đ';
+            return;
+        }
+        
+        // Nhóm theo order_number để hiển thị từng dòng sản phẩm
+        let totalAll = 0;
+        tbody.innerHTML = invoices.map(inv => {
+            const subtotal = inv.quantity * inv.price;
+            totalAll += subtotal;
+            return `
+                <tr data-order-number="${escapeHtml(inv.order_number)}">
+                    <td>${escapeHtml(inv.order_number)}</td>
+                    <td>${escapeHtml(inv.product_name)}</td>
+                    <td>${new Date(inv.created_at).toLocaleString('vi-VN')}</td>
+                    <td>${inv.quantity}</td>
+                    <td>${formatMoney(inv.price)}</td>
+                    <td>${formatMoney(subtotal)}</td>
+                    <td>
+                        <button class="btn-delete-invoice" onclick="deleteInvoice('${escapeHtml(inv.order_number)}')" style="background:#ef4444; color:white; border:none; padding:6px 12px; border-radius:4px; cursor:pointer;">XÓA</button>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+        
+        totalSpan.innerHTML = `<strong>${formatMoney(totalAll)}</strong>`;
+    }
+    
+    async function deleteInvoice(orderNumber) {
+        if (confirm(`Bạn có chắc muốn xóa hóa đơn ${orderNumber}? Hành động này sẽ hoàn lại số lượng tồn kho và không thể khôi phục.`)) {
+            const res = await fetch(`/api/invoices/${orderNumber}`, { method: 'DELETE' });
+            const result = await res.json();
+            
+            if (result.success) {
+                alert('Xóa hóa đơn thành công!');
+                loadInvoices(); // Reload danh sách
+                // Cập nhật lại thống kê nếu cần
+                if (typeof loadStats === 'function') loadStats();
+                if (typeof loadMonthStats === 'function') loadMonthStats();
+            } else {
+                alert(result.error || 'Xóa thất bại!');
+            }
+        }
+    }
+</script>
+
+<!-- Thêm style cho nút xóa -->
+<style>
+    .btn-delete-invoice:hover {
+        background: #dc2626 !important;
+    }
+</style>
     
     <script>
         async function loadInvoices() {
