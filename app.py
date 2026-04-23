@@ -3,7 +3,7 @@ import os
 from database import Database
 from datetime import datetime, timedelta
 from auth import login_required, check_login
-
+import sqlite3  # Thêm dòng này nếu chưa có
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'your-secret-key-here-change-in-production')
 db = Database()
@@ -368,22 +368,27 @@ def report_detail():
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
-@app.route('/admin/backup')
+@app.route('/backup')
 @login_required
-def backup_database():
-    """Tải backup database - Truy cập đường dẫn này để tải file backup"""
-    import subprocess
+def backup():
+    """Tải backup database"""
+    conn = sqlite3.connect('data/pos.db')
+    
+    # Lấy toàn bộ dữ liệu dạng SQL
+    backup_data = []
+    for line in conn.iterdump():
+        backup_data.append(line)
+    conn.close()
+    
+    # Tạo nội dung file backup
+    content = '\n'.join(backup_data)
+    
+    # Tạo tên file
     from datetime import datetime
+    filename = f"backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.sql"
     
-    # Chạy lệnh export database
-    result = subprocess.run(['sqlite3', 'data/pos.db', '.dump'], 
-                          capture_output=True, text=True)
-    
-    # Tạo tên file có timestamp
-    filename = f"backup_pos_{datetime.now().strftime('%Y%m%d_%H%M%S')}.sql"
-    
-    # Trả về file để tải xuống
-    return result.stdout, 200, {
+    # Trả về file download
+    return content, 200, {
         'Content-Type': 'text/plain',
         'Content-Disposition': f'attachment; filename={filename}'
     }
