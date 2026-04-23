@@ -207,6 +207,21 @@ def get_invoices():
     invoices = db.get_invoices(filter_type, start_date, end_date)
     return jsonify(invoices)
 
+# Thêm vào sau API invoices (khoảng dòng 220):
+
+@app.route('/api/invoices/<order_number>', methods=['DELETE'])
+@login_required
+def delete_invoice(order_number):
+    """Xóa hóa đơn theo mã đơn hàng"""
+    try:
+        success, message = db.delete_invoice(order_number)
+        if success:
+            return jsonify({'success': True, 'message': message})
+        else:
+            return jsonify({'success': False, 'error': message}), 400
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 # ==================== API THỐNG KÊ ====================
 @app.route('/api/stats', methods=['GET'])
 @login_required
