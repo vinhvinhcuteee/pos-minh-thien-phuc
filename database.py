@@ -284,6 +284,58 @@ class Database:
         cursor.execute(query, params)
         return [dict(row) for row in cursor.fetchall()]
 
+    def delete_invoice(self, order_number):
+        """Xóa hóa đơn theo mã đơn hàng"""
+        cursor = self.conn.cursor()
+        try:
+            # Lấy order_id từ order_number
+            cursor.execute("SELECT id FROM orders WHERE order_number = ?", (order_number,))
+            result = cursor.fetchone()
+            if not result:
+                return False, "Không tìm thấy đơn hàng"
+            
+            order_id = result['id']
+            
+            # Lấy danh sách sản phẩm trong đơn hàng để hoàn lại stock
+            cursor.execute("SELECT product_id, quantity FROM order_items WHERE order_id = ?", (order_id,))
+            items = cursor.fetchall()
+            
+            # Hoàn lại số lượng tồn kho
+            for item in items:
+                cursor.execute("UPDATE products SET stock = stock + ? WHERE id = ?", 
+                             (item['quantity'], item['product_id']))
+            
+            # Trừ total_spent của khách hàng
+            cursor.execute("SELECT customer_id, total_amount FROM orders WHERE id = ?", (order_id,))
+            order = cursor.fetchone()
+            if order and order['customer_id']:
+                cursor.execute("UPDATE customers SET total_spent = total_spent - ? WHERE id = ?",
+                             (order['total_amount'], order['customer_id']))
+            
+            # Xóa order_items trước
+            cursor.execute("DELETE FROM order_items WHERE order_id = ?", (order_id,))
+            
+            # Xóa orders
+            cursor.execute("DELETE FROM orders WHERE id = ?", (order_id,))
+            
+            self.conn.commit()
+            return True, "Xóa thành công"
+        except Exception as e:
+            self.conn.rollback()
+            return False, str(e)
+    
+    def get_order_by_number(self, order_number):
+        """Lấy thông tin đơn hàng theo mã"""
+        cursor = self.conn.cursor()
+        cursor.execute('''
+            SELECT o.*, c.name as customer_name 
+            FROM orders o
+            LEFT JOIN customers c ON o.customer_id = c.id
+            WHERE o.order_number = ?
+        ''', (order_number,))
+        row = cursor.fetchone()
+        return dict(row) if row else None
+
     # ==================== THỐNG KÊ ====================
     def get_stats(self):
         cursor = self.conn.cursor()
@@ -314,14 +366,28 @@ class Database:
         ''')
         top_products = [dict(row) for row in cursor.fetchall()]
         
+        # Tính lợi nhuận (giả định 30% - có thể tính chính xác từ cost_price)
+        cursor.execute('''
+            SELECT SUM((oi.price - p.cost_price) * oi.quantity) as profit
+            FROM order_items oi
+            JOIN products p ON oi.product_id = p.id
+            JOIN orders o ON oi.order_id = o.id
+            WHERE DATE(o.created_at) >= DATE('now', 'start of month')
+        ''')
+        profit_result = cursor.fetchone()
+        profit = profit_result['profit'] if profit_result and profit_result['profit'] else 0
+        
+        # Tính tỷ suất lợi nhuận
+        profit_margin = (profit / month_revenue * 100) if month_revenue > 0 else 0
+        
         return {
             'total_products': total_products,
             'total_customers': total_customers,
             'total_orders': total_orders,
             'today_revenue': today_revenue,
             'month_revenue': month_revenue,
-            'profit': month_revenue * 0.3,
-            'profit_margin': 30,
+            'profit': profit,
+            'profit_margin': profit_margin,
             'top_products': top_products
         }
     
