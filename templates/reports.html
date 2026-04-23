@@ -89,19 +89,38 @@
             <div style="overflow-x: auto; max-height: 400px; overflow-y: auto;">
                 <table>
                     <thead>
-                        <tr><th>STT</th><th id="colLabel">KỲ</th><th>SỐ ĐƠN</th><th>SỐ LƯỢNG SP</th><th>DOANH THU</th></tr>
-                    </thead>
-                    <tbody id="tableBody"><tr><td colspan="5">Đang tải...</tr></tbody>
-                    <tfoot><tr class="total-row"><td colspan="3">TỔNG CỘNG</td><td id="totalQuantity">0</td><td id="totalAmount">0đ</td></tr></tfoot>
+                        <tr>
+                            <th>STT</th>
+                            <th id="colLabel">KỲ</th>
+                            <th>SỐ ĐƠN</th>
+                            <th>SỐ LƯỢNG SP</th>
+                            <th>DOANH THU</th>
+                        </thead>
+                    <tbody id="tableBody">
+                        <tr><td colspan="5">Đang tải...</td</tr>
+                    </tbody>
+                    <tfoot>
+                        <tr class="total-row">
+                            <td colspan="3">TỔNG CỘNG</td>
+                            <td id="totalQuantity">0</td>
+                            <td id="totalAmount">0đ</td>
+                        </tr>
+                    </tfoot>
                 </table>
             </div>
         </div>
         
         <!-- Biểu đồ -->
-        <div class="card"><h3>📈 BIỂU ĐỒ DOANH THU</h3><canvas id="revenueChart" style="max-height: 300px;"></canvas></div>
+        <div class="card">
+            <h3>📈 BIỂU ĐỒ DOANH THU</h3>
+            <canvas id="revenueChart" style="max-height: 300px;"></canvas>
+        </div>
         
         <!-- Top sản phẩm -->
-        <div class="card"><h3>🏆 TOP SẢN PHẨM BÁN CHẠY</h3><div id="topProductsList">Đang tải...</div></div>
+        <div class="card">
+            <h3>🏆 TOP SẢN PHẨM BÁN CHẠY</h3>
+            <div id="topProductsList">Đang tải...</div>
+        </div>
     </div>
     
     <script>
@@ -109,43 +128,47 @@
         let currentReportType = 'day';
         
         async function loadStats() {
-            const res = await fetch('/api/stats');
-            const data = await res.json();
-            document.getElementById('totalProducts').innerText = data.total_products || 0;
-            document.getElementById('totalCustomers').innerText = data.total_customers || 0;
-            document.getElementById('totalOrders').innerText = data.total_orders || 0;
-            
-            if (data.top_products?.length) {
-                document.getElementById('topProductsList').innerHTML = data.top_products.map((p, i) => 
-                    `<div style="display:flex; justify-content:space-between; padding:10px; border-bottom:1px solid #e5e7eb;">
-                        <span>${i+1}. ${p.name}</span>
-                        <span style="color:#dc2626;">Đã bán: ${p.total_sold}</span>
-                    </div>`
-                ).join('');
-            } else {
-                document.getElementById('topProductsList').innerHTML = 'Chưa có dữ liệu';
-            }
+            try {
+                const res = await fetch('/api/stats');
+                const data = await res.json();
+                document.getElementById('totalProducts').innerText = data.total_products || 0;
+                document.getElementById('totalCustomers').innerText = data.total_customers || 0;
+                document.getElementById('totalOrders').innerText = data.total_orders || 0;
+                
+                if (data.top_products && data.top_products.length > 0) {
+                    document.getElementById('topProductsList').innerHTML = data.top_products.map((p, i) => 
+                        `<div style="display:flex; justify-content:space-between; padding:10px; border-bottom:1px solid #e5e7eb;">
+                            <span>${i+1}. ${p.name}</span>
+                            <span style="color:#dc2626;">Đã bán: ${p.total_sold}</span>
+                        </div>`
+                    ).join('');
+                } else {
+                    document.getElementById('topProductsList').innerHTML = 'Chưa có dữ liệu';
+                }
+            } catch(e) { console.error(e); }
         }
         
         async function loadMonthStats() {
-            const now = new Date();
-            const year = now.getFullYear();
-            const month = now.getMonth() + 1;
-            const res = await fetch(`/api/reports/detail?type=month&date=${year}-${String(month).padStart(2,'0')}`);
-            const data = await res.json();
-            
-            let totalRevenue = 0, totalOrders = 0, totalQuantity = 0;
-            data.forEach(day => {
-                totalRevenue += day.revenue || 0;
-                totalOrders += day.order_count || 0;
-                totalQuantity += day.total_quantity || 0;
-            });
-            
-            document.getElementById('monthRevenue').innerHTML = formatMoney(totalRevenue);
-            document.getElementById('monthProfit').innerHTML = formatMoney(totalRevenue * 0.3);
-            document.getElementById('totalSoldMonth').innerHTML = totalQuantity;
-            document.getElementById('invoiceCount').innerHTML = totalOrders;
-            document.getElementById('totalRevenue').innerHTML = formatMoney(totalRevenue);
+            try {
+                const now = new Date();
+                const year = now.getFullYear();
+                const month = now.getMonth() + 1;
+                const res = await fetch(`/api/reports/detail?type=month&date=${year}-${String(month).padStart(2,'0')}`);
+                const data = await res.json();
+                
+                let totalRevenue = 0, totalOrders = 0, totalQuantity = 0;
+                data.forEach(day => {
+                    totalRevenue += day.revenue || 0;
+                    totalOrders += day.order_count || 0;
+                    totalQuantity += day.total_quantity || 0;
+                });
+                
+                document.getElementById('monthRevenue').innerHTML = formatMoney(totalRevenue);
+                document.getElementById('monthProfit').innerHTML = formatMoney(totalRevenue * 0.3);
+                document.getElementById('totalSoldMonth').innerHTML = totalQuantity;
+                document.getElementById('invoiceCount').innerHTML = totalOrders;
+                document.getElementById('totalRevenue').innerHTML = formatMoney(totalRevenue);
+            } catch(e) { console.error(e); }
         }
         
         async function loadReport(type, btn) {
@@ -153,91 +176,125 @@
             document.querySelectorAll('.btn').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
             
-            const res = await fetch(`/api/reports/detail?type=${type}`);
-            const data = await res.json();
-            
-            if (!data.length) {
-                document.getElementById('tableBody').innerHTML = '<tr><td colspan="5">Không có dữ liệu</tr>';
-                return;
+            try {
+                const res = await fetch(`/api/reports/detail?type=${type}`);
+                const data = await res.json();
+                console.log('Data:', data);
+                
+                if (!data || data.length === 0) {
+                    document.getElementById('tableBody').innerHTML = '<tr><td colspan="5">Không có dữ liệu</td></tr>';
+                    document.getElementById('totalAmount').innerHTML = '0đ';
+                    document.getElementById('totalQuantity').innerHTML = '0';
+                    return;
+                }
+                
+                let html = '';
+                let totalRevenue = 0;
+                let totalQuantity = 0;
+                let labels = [];
+                let revenues = [];
+                
+                if (type === 'day') {
+                    document.getElementById('colLabel').innerText = 'GIỜ';
+                    data.forEach((item, i) => {
+                        totalRevenue += item.revenue;
+                        totalQuantity += item.total_quantity || 0;
+                        html += `<tr>
+                            <td>${i+1}</td>
+                            <td>${item.hour}:00</td>
+                            <td>${item.order_count}</td>
+                            <td>${item.total_quantity || 0}</td>
+                            <td>${formatMoney(item.revenue)}</td>
+                        </tr>`;
+                        labels.push(`${item.hour}:00`);
+                        revenues.push(item.revenue);
+                    });
+                } else if (type === 'month') {
+                    document.getElementById('colLabel').innerText = 'NGÀY';
+                    data.forEach((item, i) => {
+                        totalRevenue += item.revenue;
+                        totalQuantity += item.total_quantity || 0;
+                        const day = item.day.split('-')[2];
+                        html += `<tr>
+                            <td>${i+1}</td>
+                            <td>Ngày ${day}</td>
+                            <td>${item.order_count}</td>
+                            <td>${item.total_quantity || 0}</td>
+                            <td>${formatMoney(item.revenue)}</td>
+                        </tr>`;
+                        labels.push(`Ngày ${day}`);
+                        revenues.push(item.revenue);
+                    });
+                } else {
+                    document.getElementById('colLabel').innerText = 'THÁNG';
+                    data.forEach((item, i) => {
+                        totalRevenue += item.revenue;
+                        totalQuantity += item.total_quantity || 0;
+                        html += `<tr>
+                            <td>${i+1}</td>
+                            <td>Tháng ${i+1}</td>
+                            <td>${item.order_count}</td>
+                            <td>${item.total_quantity || 0}</td>
+                            <td>${formatMoney(item.revenue)}</td>
+                        </tr>`;
+                        labels.push(`Tháng ${i+1}`);
+                        revenues.push(item.revenue);
+                    });
+                }
+                
+                document.getElementById('tableBody').innerHTML = html;
+                document.getElementById('totalAmount').innerHTML = formatMoney(totalRevenue);
+                document.getElementById('totalQuantity').innerHTML = totalQuantity;
+                
+                // Vẽ biểu đồ
+                if (currentChart) currentChart.destroy();
+                const ctx = document.getElementById('revenueChart').getContext('2d');
+                currentChart = new Chart(ctx, {
+                    type: 'bar',
+                    data: { labels: labels, datasets: [{ label: 'Doanh thu (VNĐ)', data: revenues, backgroundColor: '#3b82f6' }] },
+                    options: { responsive: true, maintainAspectRatio: true }
+                });
+            } catch(e) {
+                console.error('Error:', e);
+                document.getElementById('tableBody').innerHTML = '<tr><td colspan="5">Lỗi tải dữ liệu</td></tr>';
             }
-            
-            let html = '', totalRevenue = 0, totalQuantity = 0;
-            let labels = [], revenues = [];
-            
-            if (type === 'day') {
-                document.getElementById('colLabel').innerText = 'GIỜ';
-                data.forEach((item, i) => {
-                    totalRevenue += item.revenue;
-                    totalQuantity += item.total_quantity || 0;
-                    html += `<tr><td>${i+1}</td><td>${item.hour}:00</td><td>${item.order_count}</td><td>${item.total_quantity || 0}</td><td>${formatMoney(item.revenue)}</td></tr>`;
-                    labels.push(`${item.hour}:00`);
-                    revenues.push(item.revenue);
-                });
-            } else if (type === 'month') {
-                document.getElementById('colLabel').innerText = 'NGÀY';
-                data.forEach((item, i) => {
-                    totalRevenue += item.revenue;
-                    totalQuantity += item.total_quantity || 0;
-                    const day = item.day.split('-')[2];
-                    html += `<tr><td>${i+1}</td><td>Ngày ${day}</td><td>${item.order_count}</td><td>${item.total_quantity || 0}</td><td>${formatMoney(item.revenue)}</td></tr>`;
-                    labels.push(`Ngày ${day}`);
-                    revenues.push(item.revenue);
-                });
-            } else {
-                document.getElementById('colLabel').innerText = 'THÁNG';
-                data.forEach((item, i) => {
-                    totalRevenue += item.revenue;
-                    totalQuantity += item.total_quantity || 0;
-                    html += `<tr><td>${i+1}</td><td>Tháng ${i+1}</td><td>${item.order_count}</td><td>${item.total_quantity || 0}</td><td>${formatMoney(item.revenue)}</td></tr>`;
-                    labels.push(`Tháng ${i+1}`);
-                    revenues.push(item.revenue);
-                });
-            }
-            
-            document.getElementById('tableBody').innerHTML = html;
-            document.getElementById('totalAmount').innerHTML = formatMoney(totalRevenue);
-            document.getElementById('totalQuantity').innerHTML = totalQuantity;
-            
-            if (currentChart) currentChart.destroy();
-            currentChart = new Chart(document.getElementById('revenueChart'), {
-                type: 'bar',
-                data: { labels, datasets: [{ label: 'Doanh thu (VNĐ)', data: revenues, backgroundColor: '#3b82f6' }] },
-                options: { responsive: true }
-            });
         }
         
         async function loadCustomReport() {
             const date = document.getElementById('customDate').value;
             if (!date) return;
-            const res = await fetch(`/api/reports/detail?type=${currentReportType}&date=${date}`);
-            const data = await res.json();
-            
-            let totalRevenue = 0, totalQuantity = 0, html = '';
-            
-            if (currentReportType === 'day') {
-                data.forEach((item, i) => {
-                    totalRevenue += item.revenue;
-                    totalQuantity += item.total_quantity || 0;
-                    html += `<tr><td>${i+1}</td><td>${item.hour}:00</td><td>${item.order_count}</td><td>${item.total_quantity || 0}</td><td>${formatMoney(item.revenue)}</td></tr>`;
-                });
-            } else if (currentReportType === 'month') {
-                data.forEach((item, i) => {
-                    totalRevenue += item.revenue;
-                    totalQuantity += item.total_quantity || 0;
-                    const day = item.day.split('-')[2];
-                    html += `<tr><td>${i+1}</td><td>Ngày ${day}</td><td>${item.order_count}</td><td>${item.total_quantity || 0}</td><td>${formatMoney(item.revenue)}</td></tr>`;
-                });
-            } else {
-                data.forEach((item, i) => {
-                    totalRevenue += item.revenue;
-                    totalQuantity += item.total_quantity || 0;
-                    html += `<tr><td>${i+1}</td><td>Tháng ${i+1}</td><td>${item.order_count}</td><td>${item.total_quantity || 0}</td><td>${formatMoney(item.revenue)}</td></tr>`;
-                });
-            }
-            
-            document.getElementById('tableBody').innerHTML = html;
-            document.getElementById('totalAmount').innerHTML = formatMoney(totalRevenue);
-            document.getElementById('totalQuantity').innerHTML = totalQuantity;
+            try {
+                const res = await fetch(`/api/reports/detail?type=${currentReportType}&date=${date}`);
+                const data = await res.json();
+                
+                let totalRevenue = 0, totalQuantity = 0;
+                let html = '';
+                
+                if (currentReportType === 'day') {
+                    data.forEach((item, i) => {
+                        totalRevenue += item.revenue;
+                        totalQuantity += item.total_quantity || 0;
+                        html += `<tr><td>${i+1}</td><td>${item.hour}:00</td><td>${item.order_count}</td><td>${item.total_quantity || 0}</td><td>${formatMoney(item.revenue)}</td></tr>`;
+                    });
+                } else if (currentReportType === 'month') {
+                    data.forEach((item, i) => {
+                        totalRevenue += item.revenue;
+                        totalQuantity += item.total_quantity || 0;
+                        const day = item.day.split('-')[2];
+                        html += `<tr><td>${i+1}</td><td>Ngày ${day}</td><td>${item.order_count}</td><td>${item.total_quantity || 0}</td><td>${formatMoney(item.revenue)}</td></tr>`;
+                    });
+                } else {
+                    data.forEach((item, i) => {
+                        totalRevenue += item.revenue;
+                        totalQuantity += item.total_quantity || 0;
+                        html += `<tr><td>${i+1}</td><td>Tháng ${i+1}</td><td>${item.order_count}</td><td>${item.total_quantity || 0}</td><td>${formatMoney(item.revenue)}</td></tr>`;
+                    });
+                }
+                
+                document.getElementById('tableBody').innerHTML = html;
+                document.getElementById('totalAmount').innerHTML = formatMoney(totalRevenue);
+                document.getElementById('totalQuantity').innerHTML = totalQuantity;
+            } catch(e) { console.error(e); }
         }
         
         function formatMoney(amount) {
